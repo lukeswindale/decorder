@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Decorder – Google Recorder Transcript Downloader",
+  "version": "1.0.0",
+  "description": "Download transcripts from Google Recorder into a google-recorder subfolder.",
+  "permissions": [
+    "downloads",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://recorder.google.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Download Transcripts"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://recorder.google.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
