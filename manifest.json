@@ -1,19 +1,32 @@
 {
   "manifest_version": 3,
   "name": "Decorder – Google Recorder Transcript Downloader",
-  "version": "1.0.0",
-  "description": "Download transcripts from Google Recorder into a google-recorder subfolder.",
+  "version": "1.2.0",
+  "description": "Download transcripts from Google Recorder via its internal RPC API into a decorder subfolder.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "downloads",
-    "activeTab",
-    "scripting"
+    "downloads.ui",
+    "activeTab"
   ],
   "host_permissions": [
-    "https://recorder.google.com/*"
+    "https://recorder.google.com/*",
+    "https://pixelrecorder-pa.clients6.google.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Download Transcripts"
+    "default_title": "Download Transcripts",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "background": {
     "service_worker": "background.js"

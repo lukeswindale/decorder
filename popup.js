@@ -3,7 +3,7 @@ const status = document.getElementById("status");
 
 startBtn.addEventListener("click", async () => {
   startBtn.disabled = true;
-  status.textContent = "Starting…";
+  status.textContent = "Fetching recordings…";
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
@@ -19,10 +19,16 @@ startBtn.addEventListener("click", async () => {
       startBtn.disabled = false;
       return;
     }
-    if (response && response.count !== undefined) {
-      status.textContent = `Queued ${response.count} transcript(s).`;
+    if (!response) {
+      status.textContent = "Done.";
+    } else if (response.error) {
+      status.textContent = "Error: " + response.error;
     } else {
-      status.textContent = response && response.error ? response.error : "Done.";
+      const { found = 0, downloaded = 0, failed = 0 } = response;
+      status.textContent =
+        `Found ${found}, downloaded ${downloaded}` +
+        (failed ? `, ${failed} failed (see console)` : "") +
+        ".";
     }
     startBtn.disabled = false;
   });

@@ -1,62 +1,82 @@
-/**
- * background.js – Manifest V3 service worker for Decorder.
- *
- * Listens for "downloadTranscripts" messages from content.js and saves each
- * transcript as a .txt file inside the ~/Downloads/google-recorder/ directory,
- * with a 500 ms gap between each download to avoid browser throttling.
- */
-
 "use strict";
 
-const DOWNLOAD_FOLDER = "google-recorder";
-const DOWNLOAD_DELAY_MS = 500;
+const DOWNLOAD_FOLDER = "decorder";
+const UI_REENABLE_DELAY_MS = 5000;
 
-/**
- * Pause execution for `ms` milliseconds.
- */
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+console.log("[decorder] background service worker loaded");
+
+const pendingDownloads = new Map();
+let uiDisabled = false;
+let reenableTimer = null;
+
+function toBase64Utf8(str) {
+  const bytes = new TextEncoder().encode(str);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
 }
 
-/**
- * Trigger a single file download via the chrome.downloads API.
- *
- * @param {string} filename  - Safe filename (no path separators).
- * @param {string} text      - Plain-text content to save.
- */
-async function downloadTranscript(filename, text) {
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-
+async function setDownloadUi(enabled) {
+  if (!chrome.downloads.setUiOptions) return;
   try {
-    await chrome.downloads.download({
+    await chrome.downloads.setUiOptions({ enabled });
+    uiDisabled = !enabled;
+  } catch (err) {
+    console.warn("[decorder] setUiOptions failed:", err);
+  }
+}
+
+function scheduleReenable() {
+  if (reenableTimer) clearTimeout(reenableTimer);
+  reenableTimer = setTimeout(() => {
+    reenableTimer = null;
+    if (uiDisabled) setDownloadUi(true);
+  }, UI_REENABLE_DELAY_MS);
+}
+
+chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  const desired = pendingDownloads.get(item.url);
+  if (!desired) {
+    suggest();
+    return;
+  }
+  pendingDownloads.delete(item.url);
+  suggest({ filename: desired, conflictAction: "uniquify" });
+});
+
+async function downloadTranscript(filename, text) {
+  if (reenableTimer) {
+    clearTimeout(reenableTimer);
+    reenableTimer = null;
+  }
+  if (!uiDisabled) await setDownloadUi(false);
+
+  const url = `data:application/octet-stream;base64,${toBase64Utf8(text || "")}`;
+  const path = `${DOWNLOAD_FOLDER}/${filename}`;
+  pendingDownloads.set(url, path);
+  try {
+    const id = await chrome.downloads.download({
       url,
-      filename: `${DOWNLOAD_FOLDER}/${filename}`,
+      filename: path,
       conflictAction: "uniquify",
       saveAs: false,
     });
+    return id;
+  } catch (err) {
+    pendingDownloads.delete(url);
+    throw err;
   } finally {
-    // Revoke the object URL after a short grace period so the browser has
-    // time to start the download before the URL disappears.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    scheduleReenable();
   }
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.action !== "downloadTranscripts") return false;
-
-  const transcripts = message.transcripts || [];
-
-  (async () => {
-    for (let i = 0; i < transcripts.length; i++) {
-      const { filename, transcript } = transcripts[i];
-      await downloadTranscript(filename, transcript || "");
-      if (i < transcripts.length - 1) {
-        await sleep(DOWNLOAD_DELAY_MS);
-      }
-    }
-    sendResponse({ downloaded: transcripts.length });
-  })();
-
-  return true; // keep channel open for the async sendResponse
+  if (message.action !== "downloadTranscript") return false;
+  downloadTranscript(message.filename, message.text)
+    .then((id) => sendResponse({ ok: true, id }))
+    .catch((err) => {
+      console.error("[decorder] download failed:", err);
+      sendResponse({ ok: false, error: err.message });
+    });
+  return true;
 });
